@@ -12,6 +12,7 @@ import (
 type UserLoginService struct {
 	UserName string `form:"user_name" json:"user_name" binding:"required,min=5,max=30"`
 	Password string `form:"password" json:"password" binding:"required,min=8,max=40"`
+	Token    bool   `form:"token" json:"token"`
 }
 
 // setSession 设置session
@@ -30,12 +31,27 @@ func (service *UserLoginService) Login(c *gin.Context) serializer.Response {
 		return serializer.ParamErr("账号或密码错误", nil)
 	}
 
-	if user.CheckPassword(service.Password) == false {
+	if !user.CheckPassword(service.Password) {
 		return serializer.ParamErr("账号或密码错误", nil)
 	}
 
-	// 设置session
-	service.setSession(c, user)
+	var token string
+	var tokenExpire int64
+	var err error
+	if service.Token {
+		token, tokenExpire, err = user.MakeToken()
+		if err != nil {
+			return serializer.DBErr("redis err", err)
+		}
+	} else {
+		// web端设置session
+		service.setSession(c, user)
+	}
 
-	return serializer.BuildUserResponse(user)
+	data := serializer.BuildUser(user)
+	data.Token = token
+	data.TokenExpire = tokenExpire
+	return serializer.Response{
+		Data: data,
+	}
 }
